@@ -306,6 +306,11 @@ export default async function handler(req: any, res: any) {
       const isBlobCallback = seg[1] === 'blob-upload' && body?.type === 'blob.upload-completed';
       const adminId = isBlobCallback ? '' : await requireAdmin(req);
 
+      // Vercel Blob bağlı mı? (arayüz, yükleme başarısız olursa net bir mesaj göstermek için sorar)
+      if (seg[1] === 'blob-status' && method === 'GET') {
+        return send({ enabled: Boolean(process.env.BLOB_READ_WRITE_TOKEN) });
+      }
+
       if (seg[1] === 'blob-upload' && method === 'POST') {
         if (!process.env.BLOB_READ_WRITE_TOKEN) {
           throw new HttpError(501, 'Dosya yükleme için Vercel Blob bağlanmamış. Video bağlantısı (URL) kullanabilirsin.');
@@ -409,27 +414,4 @@ export default async function handler(req: any, res: any) {
           const [row] = await sql`
             INSERT INTO languages (value, label, icon, icon_url, sort_order)
             VALUES (${value}, ${label}, ${icon}, ${iconUrl}, ${Number(body.sort_order) || 0}) RETURNING *`;
-          return send(row, 201);
-        }
-        if (seg[2] && method === 'PUT') {
-          const label = String(body.label || '').trim();
-          if (!label) throw new HttpError(400, 'Dil adı gerekli.');
-          const [row] = await sql`
-            UPDATE languages SET label = ${label}, icon = ${icon}, icon_url = ${iconUrl}
-            WHERE value = ${seg[2]} RETURNING *`;
-          return send(row);
-        }
-        if (seg[2] && method === 'DELETE') {
-          await sql`DELETE FROM languages WHERE value = ${seg[2]}`;
-          return send({ success: true });
-        }
-      }
-    }
-
-    throw new HttpError(404, 'Bulunamadı.');
-  } catch (err) {
-    const status = err instanceof HttpError ? err.status : 500;
-    if (status === 500) console.error(err);
-    res.status(status).json({ error: err instanceof Error ? err.message : 'Sunucu hatası.' });
-  }
-}
+          retu
