@@ -106,11 +106,32 @@ export async function uploadMedia(file: File, folder: string): Promise<string> {
       r.readAsDataURL(file);
     });
   }
+  // Vercel Blob kütüphanesi sunucunun gerçek hata mesajını gizler ("Failed to retrieve the client token").
+  // Bu yüzden önce Blob'un bağlı olup olmadığını sorup anlaşılır bir mesaj veriyoruz.
+  const status = await fetch('/api/admin/blob-status', { credentials: 'same-origin' })
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null);
+  if (status && status.enabled === false) {
+    throw new Error(
+      'Vercel Blob bağlı değil. Vercel > projen > Storage > Blob oluştur ve projeye bağla (BLOB_READ_WRITE_TOKEN otomatik eklenir), sonra yeniden deploy et. O zamana kadar video bağlantısı (URL) alanını kullanabilirsin.',
+    );
+  }
   const { upload } = await import('@vercel/blob/client');
-  const ext = file.name.split('.').pop() || 'bin';
-  const blob = await upload(`${folder}/${Date.now()}.${ext}`, file, {
-    access: 'public',
-    handleUploadUrl: '/api/admin/blob-upload',
-  });
-  return blob.url;
+  const ext = (file.name.split('.').pop() || 'bin').toLowerCase();
+  try {
+    const blob = await upload(`${folder}/${Date.now()}.${ext}`, file, {
+      access: 'public',
+      handleUploadUrl: '/api/admin/blob-upload',
+      contentType: file.type || (folder === 'videos' ? 'video/mp4' : undefined),
+    });
+    return blob.url;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : '';
+    if (/client token/i.test(msg)) {
+      throw new Error(
+        'Yükleme izni alınamadı. Çıkış yapıp admin hesabınla tekrar giriş yap; sorun sürerse Vercel > Logs içinde /api/admin/blob-upload kaydına bak.',
+      );
+    }
+    throw err;
+  }
 }
