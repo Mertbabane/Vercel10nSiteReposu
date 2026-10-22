@@ -106,6 +106,17 @@ const SHADER_STYLES = ['none', 'gradient', 'radial', 'solid'];
 const clampInt = (v: unknown, min: number, max: number) =>
   Math.min(max, Math.max(min, Math.round(Number(v) || 0)));
 
+/* ---------- Kod temizleme ----------
+ * Tarayıcıdan/IDE'den yapıştırılan kodda görünmez karakterler (NBSP, sıfır genişlikli boşluk, BOM)
+ * ve CRLF satır sonları VS Code/Python'da girinti hatasına yol açar. Kaydetmeden önce düzeltilir. */
+function cleanCode(code: string): string {
+  return code
+    .replace(/\r\n?/g, '\n')
+    .replace(/[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g, ' ')
+    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, '')
+    .replace(/[ \t]+$/gm, '');
+}
+
 /* ---------- Ana handler ---------- */
 export default async function handler(req: any, res: any) {
   try {
@@ -134,7 +145,8 @@ export default async function handler(req: any, res: any) {
             to_regclass('public.user_roles') IS NOT NULL AS user_roles,
             to_regclass('public.snippets') IS NOT NULL AS snippets,
             to_regclass('public.languages') IS NOT NULL AS languages,
-            to_regclass('public.site_settings') IS NOT NULL AS site_settings`;
+            to_regclass('public.site_settings') IS NOT NULL AS site_settings,
+            to_regclass('public.chat_messages') IS NOT NULL AS chat_messages`;
         const missingTables = Object.entries(state || {})
           .filter(([, exists]) => !exists)
           .map(([table]) => table);
@@ -215,6 +227,43 @@ export default async function handler(req: any, res: any) {
       }
     }
 
+    /* ----- SOHBET ----- */
+    if (seg[0] === 'chat' && seg[1] === 'messages') {
+      if (method === 'GET') {
+        const after = url.searchParams.get('after');
+        const rows = after
+          ? await sql`
+              SELECT m.id, m.content, m.created_at, m.user_id, p.username
+              FROM chat_messages m LEFT JOIN profiles p ON p.user_id = m.user_id
+              WHERE m.created_at > ${after} ORDER BY m.created_at ASC LIMIT 100`
+          : await sql`
+              SELECT * FROM (
+                SELECT m.id, m.content, m.created_at, m.user_id, p.username
+                FROM chat_messages m LEFT JOIN profiles p ON p.user_id = m.user_id
+                ORDER BY m.created_at DESC LIMIT 100
+              ) t ORDER BY created_at ASC`;
+        return send(rows);
+      }
+      if (method === 'POST') {
+        const userId = requireUser(req);
+        const content = String(body.content || '').trim();
+        if (!content) throw new HttpError(400, 'Mesaj boş olamaz.');
+        if (content.length > 1000) throw new HttpError(400, 'Mesaj en fazla 1000 karakter olabilir.');
+        const recent = await sql`SELECT 1 FROM chat_messages WHERE user_id = ${userId} AND created_at > now() - interval '1 second'`;
+        if (recent.length) throw new HttpError(429, 'Biraz yavaş yaz :)');
+        const [row] = await sql`INSERT INTO chat_messages (user_id, content) VALUES (${userId}, ${content}) RETURNING id, content, created_at, user_id`;
+        const [p] = await sql`SELECT username FROM profiles WHERE user_id = ${userId}`;
+        return send({ ...row, username: p?.username || null }, 201);
+      }
+    }
+    if (seg[0] === 'chat' && seg[1] === 'messages' && seg[2] && method === 'DELETE') {
+      const userId = requireUser(req);
+      const own = await sql`SELECT 1 FROM chat_messages WHERE id = ${seg[2]} AND user_id = ${userId}`;
+      if (!own.length && !(await isAdminUser(userId))) throw new HttpError(403, 'Bu mesajı silemezsin.');
+      await sql`DELETE FROM chat_messages WHERE id = ${seg[2]}`;
+      return send({ success: true });
+    }
+
     /* ----- SNIPPETS ----- */
     if (seg[0] === 'snippets') {
       if (seg.length === 1 && method === 'GET') {
@@ -236,7 +285,7 @@ export default async function handler(req: any, res: any) {
       if (seg.length === 1 && method === 'POST') {
         const userId = requireUser(req);
         const title = String(body.title || '').trim();
-        const code = String(body.code || '');
+        const code = cleanCode(String(body.code || ''));
         if (!title || !code.trim()) throw new HttpError(400, 'Başlık ve kod zorunlu.');
         const [row] = await sql`
           INSERT INTO snippets (user_id, title, description, language, code)
@@ -277,7 +326,7 @@ export default async function handler(req: any, res: any) {
             title = COALESCE(${body.title ?? null}, title),
             description = COALESCE(${body.description ?? null}, description),
             language = COALESCE(${body.language ?? null}, language),
-            code = COALESCE(${body.code ?? null}, code),
+            code = COALESCE(${body.code == null ? null : cleanCode(String(body.code))}, code),
             updated_at = now()
           WHERE id = ${id} RETURNING *`;
         return send(row);
@@ -414,4 +463,27 @@ export default async function handler(req: any, res: any) {
           const [row] = await sql`
             INSERT INTO languages (value, label, icon, icon_url, sort_order)
             VALUES (${value}, ${label}, ${icon}, ${iconUrl}, ${Number(body.sort_order) || 0}) RETURNING *`;
-          retu
+          return send(row, 201);
+        }
+        if (seg[2] && method === 'PUT') {
+          const label = String(body.label || '').trim();
+          if (!label) throw new HttpError(400, 'Dil adı gerekli.');
+          const [row] = await sql`
+            UPDATE languages SET label = ${label}, icon = ${icon}, icon_url = ${iconUrl}
+            WHERE value = ${seg[2]} RETURNING *`;
+          return send(row);
+        }
+        if (seg[2] && method === 'DELETE') {
+          await sql`DELETE FROM languages WHERE value = ${seg[2]}`;
+          return send({ success: true });
+        }
+      }
+    }
+
+    throw new HttpError(404, 'Bulunamadı.');
+  } catch (err) {
+    const status = err instanceof HttpError ? err.status : 500;
+    if (status === 500) console.error(err);
+    res.status(status).json({ error: err instanceof Error ? err.message : 'Sunucu hatası.' });
+  }
+}

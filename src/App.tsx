@@ -11,6 +11,7 @@ import { SnippetDetailPage } from '@/app/pages/SnippetDetailPage';
 import { SnippetFormPage } from '@/app/pages/SnippetFormPage';
 import { ProfilePage } from '@/app/pages/ProfilePage';
 import { AuthPage } from '@/app/pages/AuthPage';
+import { ChatPage } from '@/app/pages/ChatPage';
 import { AdminPage } from '@/app/pages/AdminPage';
 
 function NotFound() {
@@ -76,6 +77,7 @@ function Routes() {
   }
   if (path === '/login') return <AuthPage mode="login" />;
   if (path === '/signup') return <AuthPage mode="signup" />;
+  if (path === '/chat') return <ChatPage />;
   if (path === '/admin') return <AdminPage />;
   return <NotFound />;
 }

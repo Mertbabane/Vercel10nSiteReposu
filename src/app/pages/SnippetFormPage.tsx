@@ -1,3 +1,4 @@
+import { cleanCode } from '@/app/lib/code';
 import { useEffect, useState } from 'react';
 import { ArrowLeft, Save } from 'lucide-react';
 import { useLanguages, type Language } from '@/app/lib/data';
@@ -135,6 +136,27 @@ export function SnippetFormPage({ snippetId, mode }: { snippetId?: string; mode:
             <textarea
               value={code}
               onChange={(e) => setCode(e.target.value)}
+              onPaste={(e) => {
+                const ta = e.currentTarget;
+                const text = cleanCode(e.clipboardData.getData('text/plain'));
+                e.preventDefault();
+                const next = code.slice(0, ta.selectionStart) + text + code.slice(ta.selectionEnd);
+                const pos = ta.selectionStart + text.length;
+                setCode(next);
+                requestAnimationFrame(() => ta.setSelectionRange(pos, pos));
+              }}
+              onKeyDown={(e) => {
+                if (e.key !== 'Tab') return;
+                e.preventDefault();
+                const ta = e.currentTarget;
+                const s = ta.selectionStart;
+                setCode(code.slice(0, s) + '    ' + code.slice(ta.selectionEnd));
+                requestAnimationFrame(() => ta.setSelectionRange(s + 4, s + 4));
+              }}
+              spellCheck={false}
+              autoCapitalize="off"
+              autoCorrect="off"
+              wrap="off"
               placeholder="Kodunu buraya yapistir..."
               rows={16}
               className="w-full px-4 py-3 rounded-xl glass-light text-white placeholder-white/30 focus:outline-none focus:border-white/20 transition-all font-mono text-sm resize-y"

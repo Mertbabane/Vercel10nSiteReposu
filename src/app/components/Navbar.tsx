@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Code2, Home, LogIn, LogOut, Plus, User, Menu, X, FileCode, UserPlus, Shield } from 'lucide-react';
+import { Code2, Home, LogIn, LogOut, Plus, User, Menu, X, FileCode, UserPlus, Shield, MessageCircle } from 'lucide-react';
 import { useAuth } from '@/app/context/AuthContext';
 import { navigate } from '@/app/lib/router';
 import { useSettings } from '@/app/context/SettingsContext';
@@ -81,13 +81,14 @@ export function Navbar() {
             <Dropdown open={menuOpen}>
               <Item i={0} open={menuOpen} icon={<Home className="w-4 h-4" />} label="Ana Sayfa" onClick={() => go('/')} />
               <Item i={1} open={menuOpen} icon={<Code2 className="w-4 h-4" />} label="Kodlar" onClick={() => go('/snippets')} />
+              <Item i={2} open={menuOpen} icon={<MessageCircle className="w-4 h-4" />} label="Sohbet" onClick={() => go('/chat')} />
               {user && (
                 <>
-                  <Item i={2} open={menuOpen} icon={<Plus className="w-4 h-4" />} label="Yeni Kod" onClick={() => go('/snippets/new')} />
-                  <Item i={3} open={menuOpen} icon={<FileCode className="w-4 h-4" />} label="Paylaşımlarım" onClick={() => go(`/profile/${profile?.username || ''}`)} />
+                  <Item i={3} open={menuOpen} icon={<Plus className="w-4 h-4" />} label="Yeni Kod" onClick={() => go('/snippets/new')} />
+                  <Item i={4} open={menuOpen} icon={<FileCode className="w-4 h-4" />} label="Paylaşımlarım" onClick={() => go(`/profile/${profile?.username || ''}`)} />
                 </>
               )}
-              {isAdmin && <Item i={4} open={menuOpen} icon={<Shield className="w-4 h-4" />} label="Admin Paneli" onClick={() => go('/admin')} />}
+              {isAdmin && <Item i={5} open={menuOpen} icon={<Shield className="w-4 h-4" />} label="Admin Paneli" onClick={() => go('/admin')} />}
             </Dropdown>
           </div>
         </div>

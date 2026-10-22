@@ -4,6 +4,7 @@ import { useLanguages, type Snippet, getLanguageLabel, getLanguageIcon } from '@
 import { useAuth } from '@/app/context/AuthContext';
 import { navigate } from '@/app/lib/router';
 import { api } from '@/app/lib/api';
+import { cleanCode } from '@/app/lib/code';
 import { CopyButton } from '@/app/components/CopyButton';
 
 export function SnippetDetailPage({ id }: { id: string }) {
@@ -143,8 +144,15 @@ export function SnippetDetailPage({ id }: { id: string }) {
             <CopyButton text={snippet.code} />
           </div>
           <div className="relative">
-            <pre className="p-4 sm:p-6 text-sm font-mono leading-relaxed overflow-x-auto max-h-[600px] overflow-y-auto">
-              <code className="text-white/80 whitespace-pre">{snippet.code}</code>
+            <pre
+              onCopy={(e) => {
+                const sel = window.getSelection()?.toString();
+                if (!sel) return;
+                e.preventDefault();
+                e.clipboardData.setData('text/plain', cleanCode(sel));
+              }}
+              className="p-4 sm:p-6 text-sm font-mono leading-relaxed overflow-x-auto max-h-[600px] overflow-y-auto">
+              <code className="text-white/80 whitespace-pre" style={{ tabSize: 4 }}>{cleanCode(snippet.code)}</code>
             </pre>
           </div>
         </div>

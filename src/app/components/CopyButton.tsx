@@ -1,17 +1,21 @@
 import { useState } from 'react';
 import { Check, Copy } from 'lucide-react';
+import { cleanCode } from '@/app/lib/code';
 
 export function CopyButton({ text, className = '' }: { text: string; className?: string }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
+    const clean = cleanCode(text);
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(clean);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
       const textarea = document.createElement('textarea');
-      textarea.value = text;
+      textarea.value = clean;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
       document.body.appendChild(textarea);
       textarea.select();
       document.execCommand('copy');

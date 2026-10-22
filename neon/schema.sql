@@ -85,5 +85,13 @@ INSERT INTO languages (value, label, icon, sort_order) VALUES
 ('kotlin','Kotlin','🟪',16),('swift','Swift','🍎',17),('text','Düz Metin','📄',18)
 ON CONFLICT (value) DO NOTHING;
 
+CREATE TABLE IF NOT EXISTS chat_messages (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  content text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at ON chat_messages (created_at DESC);
+
 -- Kayıt olduktan sonra kendini admin yapmak istersen (e-postanı yaz):
 -- INSERT INTO user_roles (user_id, role) SELECT id, 'admin' FROM users WHERE email = 'senin@email.com' ON CONFLICT DO NOTHING;
