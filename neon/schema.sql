@@ -93,5 +93,13 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_chat_messages_created_at ON chat_messages (created_at DESC);
 
+-- Yazıyor göstergesi + kod görseli. Site bunu ilk istekte kendisi de çalıştırır; elle çalıştırmak da güvenlidir.
+CREATE TABLE IF NOT EXISTS chat_typing (
+  user_id uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE snippets ADD COLUMN IF NOT EXISTS image_url text;
+ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS snippet_image_position text NOT NULL DEFAULT 'below';
+
 -- Kayıt olduktan sonra kendini admin yapmak istersen (e-postanı yaz):
 -- INSERT INTO user_roles (user_id, role) SELECT id, 'admin' FROM users WHERE email = 'senin@email.com' ON CONFLICT DO NOTHING;

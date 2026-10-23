@@ -15,6 +15,8 @@ export function ChatPage() {
   const [loading, setLoading] = useState(true);
   const listRef = useRef<HTMLDivElement>(null);
   const lastRef = useRef<string | null>(null);
+  const [typers, setTypers] = useState<string[]>([]);
+  const lastTypingPing = useRef(0);
 
   const merge = (incoming: ChatMessage[]) => {
     if (!incoming.length) return;
@@ -39,19 +41,42 @@ export function ChatPage() {
         if (alive) setLoading(false);
       }
     };
+    const loadTyping = async () => {
+      try {
+        const names = await api<string[]>('/chat/typing');
+        if (alive) setTypers(names);
+      } catch {
+        /* yok say */
+      }
+    };
     load();
+    loadTyping();
     const t = setInterval(() => {
       if (document.visibilityState === 'visible') load();
     }, 3000);
+    const t2 = setInterval(() => {
+      if (document.visibilityState === 'visible') loadTyping();
+    }, 1500);
     return () => {
       alive = false;
       clearInterval(t);
+      clearInterval(t2);
     };
   }, []);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
-  }, [messages.length]);
+  }, [messages.length, typers.length]);
+
+  // Yazarken en fazla 2 saniyede bir sunucuya "yazıyor" bildirimi gönder.
+  const onType = (value: string) => {
+    setText(value);
+    if (!user || !value.trim()) return;
+    const now = Date.now();
+    if (now - lastTypingPing.current < 2000) return;
+    lastTypingPing.current = now;
+    api('/chat/typing', { method: 'POST', body: JSON.stringify({ typing: true }) }).catch(() => {});
+  };
 
   const send = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,6 +88,7 @@ export function ChatPage() {
       const row = await api<ChatMessage>('/chat/messages', { method: 'POST', body: JSON.stringify({ content }) });
       merge([row]);
       setText('');
+      lastTypingPing.current = 0;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Mesaj gönderilemedi.');
     } finally {
@@ -117,6 +143,18 @@ export function ChatPage() {
               </div>
             );
           })}
+          {typers.length > 0 && (
+            <div className="flex justify-start animate-fade-in">
+              <div className="glass-light border border-white/10 rounded-2xl px-4 py-2.5 flex items-center gap-2">
+                <span className="text-xs text-white/50">
+                  {typers.length === 1 ? `${typers[0]} yazıyor` : typers.length === 2 ? `${typers[0]} ve ${typers[1]} yazıyor` : `${typers.length} kişi yazıyor`}
+                </span>
+                <span className="typing-dots" aria-hidden="true">
+                  <span /><span /><span />
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
         {error && <div className="px-5 py-2 text-sm text-red-400 border-t border-white/10">{error}</div>}
@@ -125,7 +163,7 @@ export function ChatPage() {
           <form onSubmit={send} className="flex gap-2 p-3 border-t border-white/10">
             <input
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => onType(e.target.value)}
               maxLength={1000}
               placeholder="Mesajını yaz..."
               className="flex-1 px-4 py-3 rounded-xl glass-light text-white placeholder-white/30 focus:outline-none"

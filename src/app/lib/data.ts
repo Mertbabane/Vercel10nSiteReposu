@@ -18,6 +18,7 @@ export type Snippet = {
   description: string | null;
   language: string;
   code: string;
+  image_url?: string | null;
   views: number;
   created_at: string;
   updated_at: string;
@@ -40,6 +41,7 @@ export type SiteSettings = {
   shader_color: string;
   shader_opacity: number;
   shader_style: 'none' | 'gradient' | 'radial' | 'solid';
+  snippet_image_position?: 'above' | 'below' | 'left' | 'right';
   created_at: string;
   updated_at: string;
 };

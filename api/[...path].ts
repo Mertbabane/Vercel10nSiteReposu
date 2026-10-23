@@ -117,6 +117,30 @@ function cleanCode(code: string): string {
     .replace(/[ \t]+$/gm, '');
 }
 
+/* ---------- Otomatik şema güncellemesi (yazıyor göstergesi + kod görseli) ---------- */
+let _v2Ready: Promise<void> | null = null;
+function ensureV2(): Promise<void> {
+  _v2Ready ||= (async () => {
+    await sql`CREATE TABLE IF NOT EXISTS chat_typing (user_id uuid PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, updated_at timestamptz NOT NULL DEFAULT now())`;
+    await sql`ALTER TABLE snippets ADD COLUMN IF NOT EXISTS image_url text`;
+    await sql`ALTER TABLE site_settings ADD COLUMN IF NOT EXISTS snippet_image_position text NOT NULL DEFAULT 'below'`;
+  })().catch((e) => {
+    _v2Ready = null;
+    throw e;
+  });
+  return _v2Ready;
+}
+
+const IMAGE_POSITIONS = ['above', 'below', 'left', 'right'];
+function cleanImage(v: unknown): string | null {
+  if (v === undefined || v === null || v === '') return null;
+  const s = String(v);
+  if (s.length > 3_000_000 || !/^(data:image\/(png|jpe?g|webp|gif);base64,|https:\/\/)/.test(s)) {
+    throw new HttpError(400, 'Geçersiz veya çok büyük görsel (en fazla ~2 MB).');
+  }
+  return s;
+}
+
 /* ---------- Ana handler ---------- */
 export default async function handler(req: any, res: any) {
   try {
@@ -175,6 +199,8 @@ export default async function handler(req: any, res: any) {
       throw new HttpError(503, 'JWT_SECRET eksik veya kısa. En az 32 karakterlik bir değeri Replit Secrets ya da Vercel Environment Variables bölümüne ekle.');
     }
 
+    if (['chat', 'snippets', 'site-settings', 'admin'].includes(seg[0])) await ensureV2();
+
     /* ----- AUTH ----- */
     if (seg[0] === 'auth') {
       if (seg[1] === 'signup' && method === 'POST') {
@@ -227,6 +253,29 @@ export default async function handler(req: any, res: any) {
       }
     }
 
+    /* ----- SOHBET: yazıyor göstergesi ----- */
+    if (seg[0] === 'chat' && seg[1] === 'typing') {
+      if (method === 'POST') {
+        const userId = requireUser(req);
+        if (body.typing === false) {
+          await sql`DELETE FROM chat_typing WHERE user_id = ${userId}`;
+        } else {
+          await sql`INSERT INTO chat_typing (user_id, updated_at) VALUES (${userId}, now())
+                    ON CONFLICT (user_id) DO UPDATE SET updated_at = now()`;
+        }
+        return send({ success: true });
+      }
+      if (method === 'GET') {
+        const me = getUserId(req);
+        const rows = await sql`
+          SELECT p.username FROM chat_typing t JOIN profiles p ON p.user_id = t.user_id
+          WHERE t.updated_at > now() - interval '5 seconds'
+            AND (${me}::uuid IS NULL OR t.user_id <> ${me}::uuid)
+          ORDER BY t.updated_at DESC LIMIT 5`;
+        return send(rows.map((r: any) => r.username));
+      }
+    }
+
     /* ----- SOHBET ----- */
     if (seg[0] === 'chat' && seg[1] === 'messages') {
       if (method === 'GET') {
@@ -251,6 +300,7 @@ export default async function handler(req: any, res: any) {
         if (content.length > 1000) throw new HttpError(400, 'Mesaj en fazla 1000 karakter olabilir.');
         const recent = await sql`SELECT 1 FROM chat_messages WHERE user_id = ${userId} AND created_at > now() - interval '1 second'`;
         if (recent.length) throw new HttpError(429, 'Biraz yavaş yaz :)');
+        await sql`DELETE FROM chat_typing WHERE user_id = ${userId}`;
         const [row] = await sql`INSERT INTO chat_messages (user_id, content) VALUES (${userId}, ${content}) RETURNING id, content, created_at, user_id`;
         const [p] = await sql`SELECT username FROM profiles WHERE user_id = ${userId}`;
         return send({ ...row, username: p?.username || null }, 201);
@@ -272,7 +322,9 @@ export default async function handler(req: any, res: any) {
         const owner = url.searchParams.get('user_id') || null;
         const limit = Math.min(Number(url.searchParams.get('limit')) || 200, 500);
         const rows = await sql`
-          SELECT s.*, json_build_object('username', p.username) AS profiles
+          SELECT s.id, s.user_id, s.title, s.description, s.language, s.code, s.views, s.created_at, s.updated_at,
+                 (s.image_url IS NOT NULL) AS has_image,
+                 json_build_object('username', p.username) AS profiles
           FROM snippets s LEFT JOIN profiles p ON p.user_id = s.user_id
           WHERE (${lang}::text IS NULL OR s.language = ${lang})
             AND (${owner}::uuid IS NULL OR s.user_id = ${owner})
@@ -288,8 +340,8 @@ export default async function handler(req: any, res: any) {
         const code = cleanCode(String(body.code || ''));
         if (!title || !code.trim()) throw new HttpError(400, 'Başlık ve kod zorunlu.');
         const [row] = await sql`
-          INSERT INTO snippets (user_id, title, description, language, code)
-          VALUES (${userId}, ${title}, ${body.description || null}, ${body.language || 'python'}, ${code})
+          INSERT INTO snippets (user_id, title, description, language, code, image_url)
+          VALUES (${userId}, ${title}, ${body.description || null}, ${body.language || 'python'}, ${code}, ${cleanImage(body.image_url)})
           RETURNING *`;
         return send(row, 201);
       }
@@ -327,6 +379,7 @@ export default async function handler(req: any, res: any) {
             description = COALESCE(${body.description ?? null}, description),
             language = COALESCE(${body.language ?? null}, language),
             code = COALESCE(${body.code == null ? null : cleanCode(String(body.code))}, code),
+            image_url = CASE WHEN ${'image_url' in body}::boolean THEN ${cleanImage(body.image_url)}::text ELSE image_url END,
             updated_at = now()
           WHERE id = ${id} RETURNING *`;
         return send(row);
@@ -422,6 +475,9 @@ export default async function handler(req: any, res: any) {
         if (has('shader_style') && !SHADER_STYLES.includes(body.shader_style)) {
           throw new HttpError(400, 'Geçersiz shader stili.');
         }
+        if (has('snippet_image_position') && !IMAGE_POSITIONS.includes(body.snippet_image_position)) {
+          throw new HttpError(400, 'Geçersiz görsel konumu.');
+        }
         if (has('site_title') && !String(body.site_title).trim()) throw new HttpError(400, 'Site adı boş olamaz.');
 
         const rotation = has('video_rotation') ? [0, 90, 180, 270].includes(Number(body.video_rotation)) ? Number(body.video_rotation) : 0 : null;
@@ -441,6 +497,7 @@ export default async function handler(req: any, res: any) {
             bg_color = CASE WHEN ${has('bg_color')}::boolean THEN ${text('bg_color', '#000000')}::text ELSE bg_color END,
             shader_color = CASE WHEN ${has('shader_color')}::boolean THEN ${text('shader_color', '#000000')}::text ELSE shader_color END,
             shader_opacity = CASE WHEN ${has('shader_opacity')}::boolean THEN ${clampInt(body.shader_opacity, 0, 100)}::int ELSE shader_opacity END,
+            snippet_image_position = CASE WHEN ${has('snippet_image_position')}::boolean THEN ${text('snippet_image_position', 'below')}::text ELSE snippet_image_position END,
             shader_style = CASE WHEN ${has('shader_style')}::boolean THEN ${text('shader_style', 'gradient')}::text ELSE shader_style END,
             updated_at = now()
           WHERE id = 1 RETURNING *`;

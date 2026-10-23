@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Palette, Save, RotateCcw, Type, Layers } from 'lucide-react';
+import { Palette, Save, RotateCcw, Type, Layers, Image as ImageIcon } from 'lucide-react';
 import type { SiteSettings } from '@/app/lib/data';
 import { ColorPicker } from '@/app/components/ColorPicker';
 import {
@@ -22,6 +22,8 @@ export function AppearanceTab({ settings, onSave }: { settings: SiteSettings; on
   const [shaderColor, setShaderColor] = useState(settings.shader_color || DEFAULT_APPEARANCE.shader_color);
   const [shaderOpacity, setShaderOpacity] = useState(settings.shader_opacity ?? DEFAULT_APPEARANCE.shader_opacity);
   const [shaderStyle, setShaderStyle] = useState<SiteSettings['shader_style']>(settings.shader_style || 'gradient');
+
+  const [imgPos, setImgPos] = useState<NonNullable<SiteSettings['snippet_image_position']>>(settings.snippet_image_position || 'below');
 
   const draft = { accent_color: accent, bg_color: bg, shader_color: shaderColor, shader_opacity: shaderOpacity, shader_style: shaderStyle };
 
@@ -54,6 +56,7 @@ export function AppearanceTab({ settings, onSave }: { settings: SiteSettings; on
       shader_color: shaderColor,
       shader_opacity: shaderOpacity,
       shader_style: shaderStyle,
+      snippet_image_position: imgPos,
     });
   };
 
@@ -150,6 +153,33 @@ export function AppearanceTab({ settings, onSave }: { settings: SiteSettings; on
           onChange={setShaderColor}
           presets={SHADER_PRESETS}
         />
+      </div>
+
+      {/* Kod görseli konumu */}
+      <div className="glass-gray rounded-2xl p-6 space-y-4">
+        <div className="flex items-center gap-3">
+          <ImageIcon className="w-5 h-5 text-white/60" />
+          <h3 className="text-lg font-bold">Kod görseli konumu</h3>
+        </div>
+        <p className="text-sm text-white/40">Kod paylaşırken eklenen görsel, kod sayfasında nerede görünsün?</p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {([
+            ['above', 'Kodun üstünde'],
+            ['below', 'Kodun altında'],
+            ['left', 'Kodun solunda'],
+            ['right', 'Kodun sağında'],
+          ] as const).map(([v, label]) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setImgPos(v)}
+              className={`px-4 py-3 rounded-xl text-sm font-medium transition-all btn-press ${imgPos === v ? 'bg-white text-black' : 'glass-light hover:bg-white/10'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-white/30">Telefonda sol/sağ seçenekleri otomatik olarak alt alta dizilir.</p>
       </div>
 
       <div className="flex flex-wrap justify-end gap-3">

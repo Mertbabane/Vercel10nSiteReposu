@@ -6,12 +6,14 @@ import { navigate } from '@/app/lib/router';
 import { api } from '@/app/lib/api';
 import { cleanCode } from '@/app/lib/code';
 import { CopyButton } from '@/app/components/CopyButton';
+import { useSettings } from '@/app/context/SettingsContext';
 
 export function SnippetDetailPage({ id }: { id: string }) {
   const LANGS = useLanguages();
   const [snippet, setSnippet] = useState<Snippet | null>(null);
   const [loading, setLoading] = useState(true);
   const { user, isAdmin } = useAuth();
+  const { settings } = useSettings();
 
   useEffect(() => {
     api<Snippet | null>(`/snippets/${id}`)
@@ -62,7 +64,7 @@ export function SnippetDetailPage({ id }: { id: string }) {
 
   return (
     <div className="relative z-10 pt-24 pb-20 px-4 sm:px-6 lg:px-8 min-h-screen">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         <button
           onClick={() => navigate('/snippets')}
           className="flex items-center gap-2 text-white/50 hover:text-white transition-colors mb-6 animate-fade-in btn-press"
@@ -130,8 +132,21 @@ export function SnippetDetailPage({ id }: { id: string }) {
           </div>
         </div>
 
-        {/* Code Block */}
-        <div className="glass-gray rounded-2xl overflow-hidden animate-fade-in-up will-fade" style={{ animationDelay: '0.1s', opacity: 0 }}>
+        {(() => {
+          const pos = settings.snippet_image_position || 'below';
+          const side = pos === 'left' || pos === 'right';
+          const imageBlock = snippet.image_url ? (
+            <div
+              className={`block glass-gray rounded-2xl p-3 animate-fade-in-up will-fade ${side ? 'lg:w-80 shrink-0 self-start' : ''}`}
+              style={{ animationDelay: '0.15s', opacity: 0 }}
+            >
+              <img src={snippet.image_url} alt={`${snippet.title} görseli`} className="w-full rounded-xl" loading="lazy" />
+            </div>
+          ) : null;
+          return (
+            <div className={side ? `flex flex-col gap-6 ${pos === 'left' ? 'lg:flex-row' : 'lg:flex-row-reverse'}` : 'flex flex-col gap-6'}>
+              {(pos === 'above' || pos === 'left' || pos === 'right') && imageBlock}
+        <div className="glass-gray rounded-2xl overflow-hidden animate-fade-in-up will-fade flex-1 min-w-0" style={{ animationDelay: '0.1s', opacity: 0 }}>
           <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-black/20">
             <div className="flex items-center gap-2">
               <div className="flex gap-1.5">
@@ -156,6 +171,11 @@ export function SnippetDetailPage({ id }: { id: string }) {
             </pre>
           </div>
         </div>
+
+              {pos === 'below' && imageBlock}
+            </div>
+          );
+        })()}
 
         {/* Copy hint */}
         <div className="mt-6 text-center animate-fade-in" style={{ animationDelay: '0.2s', opacity: 0 }}>
